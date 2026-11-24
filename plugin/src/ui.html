@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<style>
+  /* A piece of Resolve inside Figma: graphite panel, one blue accent.
+     Always dark, whatever Figma's theme is. */
+  :root {
+    color-scheme: dark;
+    --bg: oklch(0.215 0.006 265);
+    --well: oklch(0.165 0.006 265);
+    --raised: oklch(0.27 0.007 265);
+    --raised-hi: oklch(0.31 0.008 265);
+    --line: oklch(0.34 0.008 265);
+    --wire: oklch(0.47 0.01 265);
+    --ink: oklch(0.94 0.004 265);
+    --ink-2: oklch(0.74 0.01 265);
+    --accent: oklch(0.56 0.19 258);
+    --accent-hi: oklch(0.62 0.18 257);
+    --accent-lo: oklch(0.46 0.17 259);
+    --on-accent: oklch(0.99 0.005 258);
+    --img: oklch(0.76 0.1 172);
+    --txt: oklch(0.74 0.13 315);
+    --shp: oklch(0.82 0.12 105);
+    --ok: oklch(0.78 0.15 150);
+    --bad: oklch(0.72 0.17 25);
+    --sans: Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); }
+  body { font: 12px/1.45 var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; }
+  #app { padding: 0 14px 12px; }
+  .tabs { display: flex; gap: 18px; margin: 0 -14px 14px; padding: 0 14px; border-bottom: 1px solid var(--line); }
+  .tabs button { position: relative; border: 0; background: none; padding: 11px 0 10px; color: var(--ink-2); font-weight: 550; cursor: pointer;
+    transition: color 150ms var(--ease); }
+  .tabs button:hover { color: var(--ink); }
+  .tabs button[aria-selected="true"] { color: var(--ink); }
+  .tabs button[aria-selected="true"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 2px 2px 0 0; background: var(--accent); }
+  section[hidden] { display: none; }
+  h2.group { margin: 20px 0 0; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12px; font-weight: 650; color: var(--ink-2); }
+  h2.group:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+  h2.group + .field { margin-top: 10px; }
+  .field.first { margin-top: 0; }
+  #splitHint { margin-top: 8px; }
+  /* Settings can be taller than the window: Send stays in reach while it scrolls. */
+  footer { position: sticky; bottom: 0; z-index: 2; margin: 16px -14px -12px; padding: 12px 14px; background: var(--bg);
+    box-shadow: 0 -1px 0 var(--line), 0 -12px 16px -8px oklch(0 0 0 / 0.35); }
+  footer #send { margin-top: 0; }
+  button, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; border-radius: 6px; }
+
+  /* Selection */
+  .title { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; line-height: 1.25; margin: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .title.empty { color: var(--ink-2); font-weight: 500; }
+  .meta { margin: 3px 0 0; color: var(--ink-2); font: 11px/1.4 var(--mono); min-height: 15px; }
+
+  /* Node tree preview: the flow that Send will build, in Fusion's build order. */
+  .flow { position: relative; margin-top: 10px; border-radius: 8px; background: var(--well);
+    background-image: radial-gradient(oklch(0.3 0.008 265) 1px, transparent 1px); background-size: 12px 12px; background-position: 6px 6px;
+    border: 1px solid oklch(0.12 0.005 265); max-height: 224px; overflow: auto; }
+  .flow-inner { position: relative; padding: 6px 0; min-height: 84px; }
+  .flow svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .flow svg path { fill: none; stroke: var(--wire); stroke-width: 1.25; }
+  .flow svg rect { fill: var(--ink-2); }
+  .node-row { position: relative; display: flex; align-items: center; height: 24px; }
+  .node { display: inline-flex; align-items: center; gap: 6px; max-width: 168px; height: 18px; padding: 0 7px 0 6px;
+    background: var(--raised); border: 1px solid var(--line); border-radius: 4px; font-size: 11px; line-height: 1; }
+  .node span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .node i { flex: none; width: 6px; height: 6px; border-radius: 1.5px; background: var(--img); }
+  .node.text i { background: var(--txt); }
+  .node.shape i { background: var(--shp); border-radius: 50%; }
+  .node.group { background: transparent; border-style: dashed; color: var(--ink-2); }
+  .node.group i { display: none; }
+  button.node { font: inherit; font-size: 11px; color: inherit; cursor: pointer; transition: border-color 150ms var(--ease), background 150ms var(--ease); }
+  button.node:hover { border-color: var(--ink-2); background: var(--raised-hi); }
+  button.node.group:hover { background: var(--raised); color: var(--ink); border-style: solid; }
+  /* A group sent as one element: a stacked tile instead of the square swatch. */
+  .node.merged i { width: 7px; height: 5px; border-radius: 1px; box-shadow: 2px -2px 0 -0.5px var(--well), 2px -2px 0 0.5px var(--img); margin-right: 2px; }
+  .node.locked { cursor: default; }
+  .wire { flex: 1; height: 0; border-top: 1.25px solid var(--wire); min-width: 8px; }
+  .node-row.out { position: sticky; bottom: -6px; z-index: 1; margin-bottom: -6px; height: 30px; padding-bottom: 6px; justify-content: flex-end; gap: 8px;
+    color: var(--ink-2); font: 11px/1 var(--mono); background: linear-gradient(transparent, var(--well) 35%); }
+  .node-row.out::after { content: ""; width: 9px; height: 9px; border-radius: 2px; background: var(--accent); }
+  .node-row.more { color: var(--ink-2); font-size: 11px; padding-left: 10px; }
+  .flow-empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 0 28px;
+    color: var(--ink-2); line-height: 1.5; }
+  .flow-empty b { display: block; color: var(--ink); font-weight: 600; margin-bottom: 2px; }
+  .swap { animation: swap 220ms var(--ease); }
+  @keyframes swap { from { opacity: 0.35; } }
+
+  /* Controls */
+  .field { margin-top: 14px; }
+  .field > label, .field > .label { display: block; margin-bottom: 6px; font-weight: 550; }
+  .hint { margin: 6px 0 0; color: var(--ink-2); font-size: 11px; line-height: 1.45; text-wrap: pretty; }
+  .seg { display: flex; padding: 2px; gap: 2px; background: var(--well); border-radius: 7px; }
+  .seg button { flex: 1; border: 0; background: transparent; color: var(--ink-2); padding: 6px 4px; border-radius: 5px;
+    cursor: pointer; white-space: nowrap; transition: background 150ms var(--ease), color 150ms var(--ease); }
+  .seg button:hover { color: var(--ink); }
+  .seg button[aria-pressed="true"] { background: var(--raised-hi); color: var(--ink); font-weight: 600;
+    box-shadow: 0 1px 0 oklch(1 0 0 / 0.06) inset, 0 1px 2px oklch(0 0 0 / 0.4); }
+
+  /* Send */
+  #send { position: relative; overflow: hidden; width: 100%; margin-top: 16px; height: 40px; border: 0; border-radius: 8px;
+    background: var(--accent); color: var(--on-accent); font-size: 13px; font-weight: 650; cursor: pointer;
+    box-shadow: 0 1px 0 oklch(1 0 0 / 0.18) inset; transition: background 150ms var(--ease), transform 120ms var(--ease); }
+  #send:hover:not(:disabled) { background: var(--accent-hi); }
+  #send:active:not(:disabled) { transform: scale(0.985); }
+  #send:disabled { background: var(--raised); color: var(--ink-2); box-shadow: none; cursor: default; font-weight: 500; }
+  #send.busy:disabled { background: var(--accent-lo); color: var(--on-accent); font-weight: 650; }
+  #send .bar { position: absolute; inset: 0; background: var(--accent); transform-origin: left; transform: scaleX(0);
+    transition: transform 240ms var(--ease); }
+  #send .text { position: relative; font-variant-numeric: tabular-nums; }
+
+  .result { display: flex; gap: 7px; align-items: flex-start; margin-top: 10px; line-height: 1.45; }
+  .result[hidden] { display: none; }
+  .result svg { flex: none; margin-top: 2px; }
+  .result.ok { color: var(--ok); }
+  .result.bad { color: var(--bad); }
+
+  /* Notes and settings share the disclosure pattern. */
+  details { margin-top: 12px; border-top: 1px solid var(--line); }
+  details + details { margin-top: 0; }
+  summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 0; cursor: pointer;
+    list-style: none; font-weight: 550; user-select: none; }
+  summary::-webkit-details-marker { display: none; }
+  summary svg { flex: none; color: var(--ink-2); transition: transform 180ms var(--ease); }
+  details[open] > summary svg { transform: rotate(90deg); }
+  #naming { margin-top: 14px; }
+  #naming .lead { margin-top: 0; }
+  .names { margin: 10px 0; display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; align-items: baseline; font-size: 11px; line-height: 1.45; }
+  .names dt { font: 11px/1.45 var(--mono); color: var(--ink-2); white-space: nowrap; }
+  .names dd { margin: 0; color: var(--ink-2); }
+  code { font: 600 11px/1 var(--mono); color: var(--ink); background: var(--raised); border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; margin-right: 1px; }
+  #notes ul { margin: 0 0 10px; padding: 0 0 0 16px; color: var(--ink-2); font-size: 11px; line-height: 1.5; }
+  #notes li + li { margin-top: 4px; }
+
+  .path { display: flex; gap: 6px; }
+  .path output { flex: 1; min-width: 0; display: flex; align-items: center; height: 30px; padding: 0 9px; background: var(--well);
+    border-radius: 6px; font: 11px/1 var(--mono); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .btn { height: 30px; padding: 0 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--raised); cursor: pointer;
+    transition: background 150ms var(--ease); }
+  .btn:hover { background: var(--raised-hi); }
+  .btn.quiet { border-color: transparent; background: transparent; color: var(--ink-2); padding: 0 6px; }
+  .btn.quiet:hover { color: var(--ink); background: transparent; }
+  select { width: 100%; height: 30px; padding: 0 28px 0 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--raised);
+    appearance: none; cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23b4b6bd' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 10px center; }
+
+  .switch { display: flex; align-items: flex-start; gap: 10px; margin-top: 12px; cursor: pointer; }
+  .switch input { position: absolute; opacity: 0; pointer-events: none; }
+  .switch .track { flex: none; position: relative; width: 28px; height: 16px; margin-top: 1px; border-radius: 8px; background: var(--well);
+    box-shadow: 0 0 0 1px var(--line) inset; transition: background 160ms var(--ease); }
+  .switch .track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
+    background: var(--ink-2); transition: transform 160ms var(--ease), background 160ms var(--ease); }
+  .switch input:checked + .track { background: var(--accent); box-shadow: none; }
+  .switch input:checked + .track::after { transform: translateX(12px); background: var(--on-accent); }
+  .switch input:focus-visible + .track { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
+  .switch b { display: block; font-weight: 550; }
+  .switch small { display: block; color: var(--ink-2); font-size: 11px; line-height: 1.4; margin-top: 1px; }
+
+  .link { display: flex; align-items: center; gap: 7px; margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--line);
+    color: var(--ink-2); font-size: 11px; }
+  .link .led { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--bad); }
+  .link.on .led { background: var(--ok); box-shadow: 0 0 6px oklch(0.78 0.15 150 / 0.7); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tabbtn-source" aria-controls="tab-source" aria-selected="true">Source</button>
+    <button role="tab" id="tabbtn-build" aria-controls="tab-build" aria-selected="false">Build</button>
+    <button role="tab" id="tabbtn-deliver" aria-controls="tab-deliver" aria-selected="false">Deliver</button>
+  </div>
+
+  <!-- Source: what is being sent, and what travels as one element. -->
+  <section id="tab-source" role="tabpanel" aria-labelledby="tabbtn-source">
+    <h1 class="title empty" id="title">Nothing selected</h1>
+    <p class="meta" id="meta"></p>
+
+    <div class="flow" id="flow" tabindex="0" aria-label="Preview of the Fusion node tree">
+      <div class="flow-inner" id="flowInner"></div>
+    </div>
+    <p class="hint" id="splitHint">Click a group in the tree to send it as one element. Click it again to split it.</p>
+
+    <div class="field">
+      <span class="label" id="l-split">Split into</span>
+      <div class="seg" role="group" aria-labelledby="l-split" data-key="splitMode">
+        <button data-v="all">Every layer</button><button data-v="top">Top-level elements</button>
+      </div>
+    </div>
+    <label class="switch"><input type="checkbox" id="flattenIcons"><span class="track"></span>
+      <span><b>Keep icons whole</b><small>Small vector groups travel as one element.</small></span></label>
+
+    <details id="naming">
+      <summary>Control it from layer names<svg width="6" height="10" viewBox="0 0 6 10" aria-hidden="true"><path d="M1 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+      <p class="hint lead">Start a layer's name in Figma with one of these and it applies on every send, for anyone who opens the file. The symbol is left out of the Fusion node name.</p>
+      <dl class="names">
+        <dt><code>*</code>Card</dt><dd>Stays together: the group and everything in it travel as one element. Use it for anything you will animate as a unit.</dd>
+        <dt><code>+</code>Card</dt><dd>Always split into its layers, even when "Split into" is set to Top-level elements. Use it for the few groups you animate piece by piece.</dd>
+        <dt><code>-</code>Guides</dt><dd>Left out of the send completely.</dd>
+      </dl>
+      <p class="hint">A common setup: choose Top-level elements, then put <code>+</code> on the one or two groups whose insides need to move. Names win over clicks in the tree, and named groups show as locked there.</p>
+    </details>
+  </section>
+
+  <!-- Build: how each kind of layer becomes Fusion nodes. -->
+  <section id="tab-build" role="tabpanel" aria-labelledby="tabbtn-build" hidden>
+    <h2 class="group">Shapes</h2>
+    <div class="field">
+      <div class="seg" role="group" aria-label="Shapes become" data-key="importMode">
+        <button data-v="png">PNG</button><button data-v="hybrid">Fusion nodes</button>
+      </div>
+      <p class="hint" id="modeHint"></p>
+    </div>
+    <div class="field" id="shapeStyleField">
+      <span class="label" id="l-shape">Built with</span>
+      <div class="seg" role="group" aria-labelledby="l-shape" data-key="shapeStyle">
+        <button data-v="masks">Mask + Background</button><button data-v="shapes">Shape nodes</button>
+      </div>
+      <p class="hint" id="shapeHint"></p>
+    </div>
+
+    <h2 class="group">Text</h2>
+    <div class="field">
+      <div class="seg" role="group" aria-label="Text layers become" data-key="textMode">
+        <button data-v="textplus">Text+</button><button data-v="png">PNG</button>
+      </div>
+      <p class="hint" id="textHint"></p>
+    </div>
+
+    <h2 class="group">PNG</h2>
+    <div class="field">
+      <span class="label" id="l-scale">Scale</span>
+      <div class="seg" role="group" aria-labelledby="l-scale" data-key="multiplier">
+        <button data-v="1">1x</button><button data-v="2">2x</button><button data-v="3">3x</button><button data-v="4">4x</button>
+      </div>
+    </div>
+    <label class="switch"><input type="checkbox" id="boostSmall"><span class="track"></span>
+      <span><b>Sharper small elements</b><small>Raises the scale for anything under about 50 px.</small></span></label>
+    <div class="field">
+      <span class="label">Saved to</span>
+      <div class="path">
+        <output id="folder"></output>
+        <button class="btn" id="browse">Browse</button>
+        <button class="btn quiet" id="resetFolder" hidden>Reset</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Deliver: where it lands in Fusion. -->
+  <section id="tab-deliver" role="tabpanel" aria-labelledby="tabbtn-deliver" hidden>
+    <div class="field first">
+      <span class="label" id="l-deliver">Deliver by</span>
+      <div class="seg" role="group" aria-labelledby="l-deliver" data-key="delivery">
+        <button data-v="resolve">Paste into Resolve</button><button data-v="clipboard">Clipboard</button>
+      </div>
+      <p class="hint" id="deliveryHint"></p>
+    </div>
+    <div class="field">
+      <label for="compSize">Comp size</label>
+      <select id="compSize">
+        <option value="frame">Same as the Figma frame</option>
+        <option value="1920x1080">1920 x 1080</option><option value="3840x2160">3840 x 2160</option>
+        <option value="1080x1920">1080 x 1920</option><option value="1080x1080">1080 x 1080</option>
+      </select>
+      <p class="hint">Match your Fusion comp. The design is scaled to fit and stays sharp when PNG scale covers the difference.</p>
+    </div>
+    <label class="switch"><input type="checkbox" id="transformNodes"><span class="track"></span>
+      <span><b>Transform node per element</b><small>Pivot on the element, ready to animate.</small></span></label>
+  </section>
+
+  <footer>
+    <button id="send" disabled><span class="bar" id="bar"></span><span class="text" id="sendText">Send to Fusion</span></button>
+    <div class="result" id="result" role="status" hidden>
+      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path id="resultIcon" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" d=""/></svg>
+      <span id="resultText"></span>
+    </div>
+    <details id="notes" hidden>
+      <summary><span id="notesTitle"></span><svg width="6" height="10" viewBox="0 0 6 10" aria-hidden="true"><path d="M1 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+      <ul id="notesList"></ul>
+    </details>
+    <div class="link" id="link"><span class="led"></span><span id="linkText">Looking for the companion app</span></div>
+  </footer>
+</div>
+
+<script>
+  const API = 'http://localhost:7421';
+  const ROW = 24, PAD = 6, TRUNK_RIGHT = 16, STEP = 14, SQ = 7;
+  const $ = (id) => document.getElementById(id);
+  const embedded = parent !== window;
+  let settings = null, summary = null, online = false, busy = false;
+
+  const toCode = (msg) => embedded && parent.postMessage({ pluginMessage: msg }, '*');
+
+  const MODE_HINTS = {
+    png: 'Rendered by Figma. The closest match to your design.',
+    hybrid: 'Fills, strokes, a drop shadow and layer blur become editable nodes. Images and other effects stay PNG.',
+  };
+  const SHAPE_HINTS = {
+    masks: 'A Rectangle, Ellipse or Polygon mask on a Background node.',
+    shapes: 'sRectangle or sEllipse into sRender. Gradients and custom paths still use masks.',
+  };
+  const TEXT_HINTS = {
+    textplus: 'Editable. The fonts must be installed on this computer.',
+    png: 'Pixel exact, but not editable in Fusion.',
+  };
+  const DELIVERY_HINTS = {
+    resolve: 'Needs Resolve Studio with a Fusion comp open. Nodes appear on their own.',
+    clipboard: 'After sending, click the Fusion node editor and press Ctrl+V.',
+  };
+
+  function el(tag, cls, text) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+
+  // Rows are HTML (so names truncate), wires and merge squares are one SVG laid over them.
+  // Each layer row ends in a Merge on its trunk; a group's children run on a sub trunk one step left.
+  function renderFlow() {
+    const inner = $('flowInner');
+    inner.textContent = '';
+    if (!settings) return;
+    if (!summary || !summary.ok) {
+      const empty = el('div', 'flow-empty');
+      const copy = el('div');
+      empty.append(copy);
+      copy.append(el('b', '', summary && summary.label !== 'Select a frame or some layers' ? summary.label : 'Select a frame, or layers inside one'),
+        document.createTextNode('A frame sends everything in it. Layers keep their position in the frame.'));
+      inner.append(empty);
+      return;
+    }
+    const rows = summary.rows;
+    const width = $('flow').clientWidth;
+    const x = (depth) => width - TRUNK_RIGHT - depth * STEP;
+    const y = (i) => PAD + i * ROW + ROW / 2;
+    const paths = [], squares = [];
+    const last = {};
+
+    rows.forEach((row, i) => {
+      const line = el('div', 'node-row');
+      line.style.paddingLeft = 8 + row.depth * 10 + 'px';
+      line.style.paddingRight = width - x(row.depth) + SQ / 2 + 'px';
+      // Groups, and groups sent as one element, toggle between the two on click.
+      const clickable = row.nodeId && row.canToggle;
+      const node = el(clickable ? 'button' : 'div', 'node ' + row.kind + (row.merged ? ' merged' : '') + (row.nodeId && !row.canToggle ? ' locked' : ''));
+      node.append(el('i'), el('span', '', row.name));
+      node.title = !row.nodeId ? row.name
+        : !row.canToggle ? row.name + (row.merged ? ': always sent as one element (its name starts with * or it contains a mask)' : ': always split (its name starts with +)')
+        : row.merged ? row.name + ': sent as one element. Click to split it into layers.'
+        : row.name + ': split into layers. Click to send it as one element.';
+      if (clickable) node.onclick = () => toCode({ type: 'set-split', nodeId: row.nodeId, value: row.merged ? 'split' : 'merge' });
+      line.append(node, el('div', 'wire'));
+      inner.append(line);
+
+      const px = x(row.depth), py = y(i);
+      if (last[row.depth] !== undefined) paths.push(`M${px} ${last[row.depth]}V${py}`);
+      if (row.kind === 'group' && last[row.depth + 1] !== undefined) {
+        const sx = x(row.depth + 1);
+        paths.push(`M${sx} ${last[row.depth + 1]}V${py}H${px}`);
+        delete last[row.depth + 1];
+      }
+      last[row.depth] = py;
+      squares.push(`<rect x="${px - SQ / 2}" y="${py - SQ / 2}" width="${SQ}" height="${SQ}" rx="1.5"/>`);
+    });
+
+    let count = rows.length;
+    if (summary.moreRows > 0) {
+      inner.append(el('div', 'node-row more', `and ${summary.moreRows} more`));
+      count++;
+    }
+    const comp = settings.compSize === 'frame' ? `${summary.frame.width} x ${summary.frame.height}` : settings.compSize.replace('x', ' x ');
+    const out = el('div', 'node-row out', `comp ${comp}`);
+    out.style.paddingRight = TRUNK_RIGHT - 4.5 + 'px';
+    inner.append(out);
+    const oy = y(count);
+    if (last[0] !== undefined) paths.push(`M${x(0)} ${last[0]}V${oy}`);
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.innerHTML = paths.map((d) => `<path d="${d}"/>`).join('') + squares.join('');
+    inner.append(svg);
+    inner.classList.remove('swap');
+    void inner.offsetWidth;
+    inner.classList.add('swap');
+  }
+
+  function shortPath(p) {
+    const parts = p.split(/[\\/]/).filter(Boolean);
+    return parts.length <= 2 ? p : '...\\' + parts.slice(-2).join('\\');
+  }
+
+  function sendLabel() {
+    if (busy) return null;
+    if (!online) return 'Companion app is not running';
+    if (!summary || !summary.ok) return 'Select something to send';
+    return 'Send to Fusion';
+  }
+
+  function render() {
+    if (!settings) return;
+    document.querySelectorAll('.seg').forEach((seg) => {
+      seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(String(settings[seg.dataset.key]) === b.dataset.v)));
+    });
+    $('modeHint').textContent = MODE_HINTS[settings.importMode];
+    $('shapeHint').textContent = SHAPE_HINTS[settings.shapeStyle];
+    $('shapeStyleField').hidden = settings.importMode === 'png';
+    $('textHint').textContent = TEXT_HINTS[settings.textMode];
+    $('deliveryHint').textContent = DELIVERY_HINTS[settings.delivery];
+    $('compSize').value = settings.compSize;
+    ['transformNodes', 'boostSmall', 'flattenIcons'].forEach((id) => { $(id).checked = settings[id]; });
+    $('folder').textContent = settings.folder ? shortPath(settings.folder) : 'Documents\\FigmaToFusion';
+    $('folder').title = settings.folder || 'Default folder';
+    $('resetFolder').hidden = !settings.folder;
+
+    const ok = summary && summary.ok;
+    $('title').textContent = ok ? summary.title : 'Nothing selected';
+    $('title').title = ok ? summary.title : '';
+    $('title').classList.toggle('empty', !ok);
+    $('meta').textContent = ok
+      ? [summary.label.startsWith('Frame') ? 'frame' : summary.label.replace(/ in ".*"$/, ''),
+        summary.images ? `${summary.images} png` : '', summary.shapes ? `${summary.shapes} shape` : '', summary.texts ? `${summary.texts} text` : '', summary.groups ? `${summary.groups} grp` : '']
+        .filter(Boolean).join('  /  ')
+      : '';
+
+    const label = sendLabel();
+    if (label) $('sendText').textContent = label;
+    $('send').disabled = busy || !online || !ok;
+    $('send').classList.toggle('busy', busy);
+    $('link').classList.toggle('on', online);
+    $('linkText').textContent = online ? 'Companion app connected' : 'Open "Figma to Fusion" from the Start menu, then come back.';
+  }
+
+  function progress(fraction, text) {
+    $('bar').style.transform = `scaleX(${fraction})`;
+    $('sendText').textContent = text;
+  }
+
+  function showResult(kind, text) {
+    $('result').hidden = !kind;
+    $('result').className = 'result ' + (kind || '');
+    $('resultIcon').setAttribute('d', kind === 'ok' ? 'M2 6.5l2.8 2.8L10 3.5' : 'M6 2.5v4.2M6 9.4v.1');
+    $('resultText').textContent = text || '';
+  }
+
+  function showNotes(items) {
+    $('notes').hidden = items.length === 0;
+    $('notes').open = false;
+    $('notesTitle').textContent = items.length === 1 ? '1 note about this send' : `${items.length} notes about this send`;
+    $('notesList').textContent = '';
+    items.forEach((t) => $('notesList').append(el('li', '', t)));
+  }
+
+  function update(patch) {
+    settings = { ...settings, ...patch };
+    toCode({ type: 'save-settings', settings });
+    render();
+    if ('compSize' in patch) renderFlow();
+  }
+
+  document.querySelectorAll('.seg button').forEach((b) => {
+    b.onclick = () => {
+      const key = b.parentElement.dataset.key;
+      update({ [key]: key === 'multiplier' ? Number(b.dataset.v) : b.dataset.v });
+    };
+  });
+  ['transformNodes', 'boostSmall', 'flattenIcons'].forEach((id) => { $(id).onchange = (e) => update({ [id]: e.target.checked }); });
+  $('compSize').onchange = (e) => update({ compSize: e.target.value });
+  const TABS = ['source', 'build', 'deliver'];
+  function showTab(name) {
+    for (const tab of TABS) {
+      $('tab-' + tab).hidden = tab !== name;
+      $('tabbtn-' + tab).setAttribute('aria-selected', String(tab === name));
+    }
+    // The tree measures its own width, which is zero while its tab is hidden.
+    if (name === 'source') renderFlow();
+  }
+  TABS.forEach((tab) => { $('tabbtn-' + tab).onclick = () => showTab(tab); });
+  $('resetFolder').onclick = () => update({ folder: '' });
+  $('browse').onclick = async () => {
+    try {
+      const res = await fetch(`${API}/pick-folder`, { method: 'POST', body: JSON.stringify({ initial: settings.folder }) });
+      const { folder } = await res.json();
+      if (folder) update({ folder });
+    } catch { showResult('bad', 'The companion app is not running, so the folder dialog cannot open.'); }
+  };
+
+  async function ping() {
+    try { online = (await (await fetch(`${API}/ping`)).json()).ok === true; } catch { online = false; }
+    render();
+  }
+
+  $('send').onclick = () => {
+    busy = true;
+    showResult(null);
+    showNotes([]);
+    render();
+    progress(0.04, 'Reading layers');
+    toCode({ type: 'send', settings });
+  };
+
+  function replaceFiles(layers, paths) {
+    for (const l of layers) {
+      if (l.type === 'image') l.file = paths[l.file] || l.file;
+      else if (l.type === 'group') replaceFiles(l.children, paths);
+    }
+  }
+
+  // Export is the first half of the bar, writing files the second.
+  async function deliver(msg) {
+    const paths = {};
+    for (let i = 0; i < msg.assets.length; i++) {
+      const a = msg.assets[i];
+      progress(0.5 + 0.45 * (i / msg.assets.length), `Writing ${i + 1} / ${msg.assets.length}`);
+      const q = new URLSearchParams({ file: msg.fileName, frame: msg.scene.name, name: a.fileName });
+      if (settings.folder) q.set('folder', settings.folder);
+      const res = await fetch(`${API}/asset?${q}`, { method: 'POST', body: a.bytes });
+      const out = await res.json();
+      if (!res.ok) throw new Error(out.error);
+      paths[a.key] = out.path;
+    }
+    replaceFiles(msg.scene.layers, paths);
+    progress(0.97, 'Building nodes');
+    const res = await fetch(`${API}/send`, { method: 'POST', body: JSON.stringify({ scene: msg.scene, options: msg.options, delivery: settings.delivery }) });
+    const out = await res.json();
+    if (!res.ok) throw new Error(out.error);
+    showNotes([...msg.notes, ...out.warnings]);
+    const done = out.delivery === 'resolve'
+      ? `${out.toolCount} nodes pasted into your Fusion comp.`
+      : `${out.toolCount} nodes copied. Click the Fusion node editor and press Ctrl+V.`;
+    showResult('ok', done);
+    toCode({ type: 'notify', message: done });
+  }
+
+  function finish() {
+    busy = false;
+    $('bar').style.transform = 'scaleX(0)';
+    render();
+  }
+
+  onmessage = async (event) => {
+    const msg = event.data.pluginMessage;
+    if (!msg) return;
+    if (msg.type === 'init') { settings = msg.settings; summary = msg.summary; render(); renderFlow(); }
+    else if (msg.type === 'selection') { summary = msg.summary; render(); renderFlow(); }
+    else if (msg.type === 'progress') progress(0.5 * ((msg.done + 1) / msg.total), `Preparing ${msg.done + 1} / ${msg.total}`);
+    else if (msg.type === 'error') { finish(); showResult('bad', msg.message); }
+    else if (msg.type === 'export-done') {
+      try { await deliver(msg); } catch (err) { showResult('bad', err.message || String(err)); }
+      finish();
+    }
+  };
+
+  // The plugin window follows its content, so opening Settings never needs a scrollbar.
+  new ResizeObserver(() => toCode({ type: 'resize', height: $('app').offsetHeight })).observe($('app'));
+  let flowWidth = 0;
+  new ResizeObserver(() => { if ($('flow').clientWidth !== flowWidth) { flowWidth = $('flow').clientWidth; renderFlow(); } }).observe($('flow'));
+
+  if (embedded) { ping(); setInterval(ping, 3000); } else online = location.hash !== '#offline';
+
+  // Opened directly in a browser (not inside Figma): show sample data so the design can be reviewed.
+  if (!embedded) {
+    const sample = (names) => names.map(([name, kind, depth, merged], i) => ({ name, kind, depth, ...(kind === 'group' || merged ? { nodeId: '1:' + i, merged: !!merged, canToggle: true } : {}) }));
+    onmessage({ data: { pluginMessage: { type: 'init',
+      settings: { importMode: 'hybrid', splitMode: 'all', shapeStyle: 'masks', multiplier: 2, boostSmall: true, textMode: 'textplus', transformNodes: true, flattenIcons: true,
+        compSize: '1920x1080', folder: location.hash === '#open' ? 'D:\\Projects\\Launch film\\figma' : '', delivery: 'resolve', drawerOpen: false },
+      summary: location.hash === '#empty'
+        ? { label: 'Select a frame or some layers', title: '', frame: { width: 0, height: 0 }, rows: [], moreRows: 0, images: 0, shapes: 0, texts: 0, groups: 0, ok: false }
+        : { label: 'Frame "01 · Hero"', title: '01 · Hero', frame: { width: 1920, height: 1080 }, moreRows: 0, images: 4, shapes: 5, texts: 5, groups: 5, ok: true,
+          rows: sample([['01 · Hero BG', 'shape', 0], ['Glow', 'image', 0], ['Nav bar', 'image', 0, true], ['Headline', 'text', 0], ['Card BG', 'shape', 1], ['Avatar', 'image', 1],
+            ['Ship designs to Fusion', 'text', 1], ['Status pill', 'shape', 2], ['Replied', 'text', 2], ['Pill', 'group', 1], ['Agent card', 'group', 0], ['Footnote', 'text', 0]]) },
+    } } });
+  }
+</script>
+</body>
+</html>

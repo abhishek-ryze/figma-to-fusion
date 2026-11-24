@@ -1,0 +1,51 @@
+{
+  "name": "figma-to-fusion",
+  "version": "0.7.0",
+  "private": true,
+  "type": "module",
+  "description": "Send Figma frames and layers to a DaVinci Resolve Fusion composition",
+  "scripts": {
+    "build:plugin": "node plugin/build.mjs",
+    "watch:plugin": "node plugin/build.mjs --watch",
+    "build:app": "node companion/build.mjs",
+    "app": "npm run build:app && electron .",
+    "dist": "npm run build:app && electron-builder --win nsis",
+    "companion": "tsx companion/src/cli.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.100.0",
+    "@types/node": "^22.0.0",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "author": "Ryze Designs",
+  "main": "companion/dist/main.cjs",
+  "build": {
+    "appId": "com.ryze.figma-to-fusion",
+    "productName": "Figma to Fusion",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "companion/dist/**",
+      "companion/assets/**",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "companion/assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "runAfterFinish": true,
+      "shortcutName": "Figma to Fusion"
+    }
+  }
+}
